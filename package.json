@@ -1,0 +1,12 @@
+{
+  "private": true,
+  "name": "secure-ticket-root",
+  "version": "0.1.0",
+  "devDependencies": {
+    "concurrently": "^8.2.0"
+  },
+  "scripts": {
+    "dev": "concurrently \"npm --prefix secure-ticket-api run dev\" \"npm --prefix secure-ticket-ui run dev\"",
+    "install-all": "npm --prefix secure-ticket-api install && npm --prefix secure-ticket-ui install"
+  }
+}
