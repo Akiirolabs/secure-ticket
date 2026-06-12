@@ -3,13 +3,14 @@ import argon2 from "argon2";
 import cors from "cors";
 import express from "express";
 import helmet from "helmet";
-import { TicketSeverity, TicketStatus, type Prisma } from "@prisma/client";
+import { Role, TicketSeverity, TicketStatus, type Prisma } from "@prisma/client";
 import { createAuthToken } from "./data";
 import { prisma } from "./db";
 import { logEvents } from "./logger";
 import { authMiddleware } from "./middleware/auth.middleware";
 import { errorMiddleware, notFoundHandler } from "./middleware/error.middleware";
 import { rateLimitMiddleware } from "./middleware/rateLimit.middleware";
+import { requireRole } from "./middleware/role.middleware";
 import { AppError } from "./utils/AppError";
 import { asyncHandler } from "./utils/asyncHandler";
 
@@ -39,6 +40,26 @@ const serializeTicket = (ticket: TicketRecord) => ({
 
 const getTicketId = (value: string | string[]) =>
   Array.isArray(value) ? value[0] : value;
+
+const normalizeEmail = (value: unknown) =>
+  typeof value === "string" ? value.trim().toLowerCase() : "";
+
+const validEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+const validPassword = (password: unknown): password is string =>
+  typeof password === "string" && password.length >= 8;
+
+const serializeUser = (user: {
+  id: string;
+  email: string;
+  role: Role;
+  createdAt: Date;
+}) => ({
+  id: user.id,
+  email: user.email,
+  role: user.role,
+  createdAt: user.createdAt.toISOString()
+});
 
 export const createApp = () => {
   const app = express();
@@ -75,10 +96,46 @@ export const createApp = () => {
   });
 
   app.post(
+    "/auth/register",
+    asyncHandler(async (req, res, next) => {
+      const email = normalizeEmail(req.body.email);
+      const password = req.body.password;
+
+      if (!validEmail(email)) {
+        return next(new AppError("Provide a valid email address", 400));
+      }
+
+      if (!validPassword(password)) {
+        return next(new AppError("Password must be at least 8 characters", 400));
+      }
+
+      const existing = await prisma.user.findUnique({ where: { email } });
+      if (existing) {
+        return next(new AppError("An account with that email already exists", 409));
+      }
+
+      const user = await prisma.user.create({
+        data: {
+          email,
+          passwordHash: await argon2.hash(password),
+          role: Role.USER
+        }
+      });
+
+      const token = createAuthToken(user);
+      logEvents.userLoginSuccess(req.requestId, user.id);
+      res.status(201).json({
+        success: true,
+        token,
+        user: serializeUser(user)
+      });
+    })
+  );
+
+  app.post(
     "/auth/login",
     asyncHandler(async (req, res, next) => {
-      const email =
-        typeof req.body.email === "string" ? req.body.email.trim().toLowerCase() : "";
+      const email = normalizeEmail(req.body.email);
       const password = typeof req.body.password === "string" ? req.body.password : "";
 
       logEvents.controllerStarted(req.requestId, "AUTH_LOGIN", undefined, {
@@ -102,6 +159,89 @@ export const createApp = () => {
       logEvents.controllerSucceeded(req.requestId, "AUTH_LOGIN", 0, user.id);
       logEvents.userLoginSuccess(req.requestId, user.id);
       return res.json({ success: true, token });
+    })
+  );
+
+  app.get(
+    "/auth/me",
+    authMiddleware,
+    asyncHandler(async (req, res, next) => {
+      const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
+      if (!user) {
+        return next(new AppError("User not found", 404));
+      }
+
+      res.json({ success: true, user: serializeUser(user) });
+    })
+  );
+
+  app.patch(
+    "/auth/password",
+    authMiddleware,
+    asyncHandler(async (req, res, next) => {
+      const currentPassword = req.body.currentPassword;
+      const newPassword = req.body.newPassword;
+
+      if (typeof currentPassword !== "string" || !validPassword(newPassword)) {
+        return next(new AppError("New password must be at least 8 characters", 400));
+      }
+
+      const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
+      if (!user || !(await argon2.verify(user.passwordHash, currentPassword))) {
+        return next(new AppError("Current password is incorrect", 400));
+      }
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { passwordHash: await argon2.hash(newPassword) }
+      });
+
+      res.json({ success: true, message: "Password updated successfully" });
+    })
+  );
+
+  app.get(
+    "/admin/users",
+    authMiddleware,
+    requireRole("ADMIN"),
+    asyncHandler(async (_req, res) => {
+      const users = await prisma.user.findMany({
+        orderBy: { createdAt: "asc" }
+      });
+
+      res.json({ success: true, users: users.map(serializeUser) });
+    })
+  );
+
+  app.patch(
+    "/admin/users/:userId/role",
+    authMiddleware,
+    requireRole("ADMIN"),
+    asyncHandler(async (req, res, next) => {
+      const userId = getTicketId(req.params.userId);
+      const role = req.body.role;
+
+      if (!Object.values(Role).includes(role)) {
+        return next(
+          new AppError(`Invalid role. Must be one of: ${Object.values(Role).join(", ")}`, 400)
+        );
+      }
+
+      if (userId === req.user!.id) {
+        return next(new AppError("You cannot change your own role", 400));
+      }
+
+      const existing = await prisma.user.findUnique({ where: { id: userId } });
+      if (!existing) {
+        return next(new AppError("User not found", 404));
+      }
+
+      const user = await prisma.user.update({
+        where: { id: userId },
+        data: { role }
+      });
+
+      res.json({ success: true, user: serializeUser(user) });
     })
   );
 
@@ -173,6 +313,7 @@ export const createApp = () => {
   app.patch(
     "/tickets/:ticketId",
     authMiddleware,
+    requireRole("ANALYST", "ADMIN"),
     asyncHandler(async (req, res, next) => {
       const ticketId = getTicketId(req.params.ticketId);
       const status = req.body.status;
@@ -225,6 +366,7 @@ export const createApp = () => {
   app.delete(
     "/tickets/:ticketId",
     authMiddleware,
+    requireRole("ANALYST", "ADMIN"),
     asyncHandler(async (req, res, next) => {
       const ticketId = getTicketId(req.params.ticketId);
 

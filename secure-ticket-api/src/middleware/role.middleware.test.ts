@@ -1,14 +1,20 @@
 import express from "express";
 import jwt from "jsonwebtoken";
 import request from "supertest";
+import { Role } from "@prisma/client";
 import { config } from "../config";
+import { prisma } from "../db";
 import { authMiddleware } from "./auth.middleware";
 import { errorMiddleware } from "./error.middleware";
 import { requireRole } from "./role.middleware";
 
 const tokenFor = (role: string) =>
   jwt.sign(
-    { id: "user_123", email: "user@example.com", role },
+    {
+      id: `user_${role.toLowerCase()}`,
+      email: `${role.toLowerCase()}@example.com`,
+      role
+    },
     config.jwt.secret
   );
 
@@ -45,6 +51,31 @@ const buildApp = () => {
 };
 
 describe("requireRole", () => {
+  beforeAll(async () => {
+    for (const role of [Role.USER, Role.ANALYST, Role.ADMIN]) {
+      await prisma.user.upsert({
+        where: { email: `${role.toLowerCase()}@example.com` },
+        update: { id: `user_${role.toLowerCase()}`, role },
+        create: {
+          id: `user_${role.toLowerCase()}`,
+          email: `${role.toLowerCase()}@example.com`,
+          passwordHash: "not-used-in-this-test",
+          role
+        }
+      });
+    }
+  });
+
+  afterAll(async () => {
+    await prisma.user.deleteMany({
+      where: {
+        email: {
+          in: ["user@example.com", "analyst@example.com", "admin@example.com"]
+        }
+      }
+    });
+  });
+
   it("blocks users without the required role", async () => {
     const response = await request(buildApp())
       .delete("/admin-only")
@@ -70,12 +101,12 @@ describe("requireRole", () => {
     expect(response.status).toBe(200);
   });
 
-  it("blocks invalid roles", async () => {
+  it("blocks tokens with invalid roles", async () => {
     const response = await request(buildApp())
       .delete("/admin-only")
       .set("Authorization", `Bearer ${tokenFor("ROOT")}`);
 
-    expect(response.status).toBe(403);
-    expect(response.body.message).toBe("Permission denied");
+    expect(response.status).toBe(401);
+    expect(response.body.message).toBe("Invalid authorization token");
   });
 });

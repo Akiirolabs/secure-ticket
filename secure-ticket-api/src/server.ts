@@ -8,7 +8,7 @@ const server = app.listen(config.port, () => {
 
 const shutdown = (signal: NodeJS.Signals) => {
   logger.info({ signal }, "Shutting down server");
-  server.close(() => (globalThis as any).process?.exit(0));
+  server.close(() => process.exit(0));
 };
 
 process.on("SIGTERM", shutdown);

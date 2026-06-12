@@ -5,6 +5,8 @@ const prisma = new PrismaClient();
 
 const demoEmail = "analyst@aegiscore.example";
 const demoPassword = "demo-password";
+const adminEmail = "admin@aegiscore.example";
+const adminPassword = "admin-password";
 
 const seed = async () => {
   const passwordHash = await argon2.hash(demoPassword);
@@ -15,6 +17,16 @@ const seed = async () => {
       email: demoEmail,
       passwordHash,
       role: Role.ANALYST
+    }
+  });
+  const adminPasswordHash = await argon2.hash(adminPassword);
+  await prisma.user.upsert({
+    where: { email: adminEmail },
+    update: { passwordHash: adminPasswordHash, role: Role.ADMIN },
+    create: {
+      email: adminEmail,
+      passwordHash: adminPasswordHash,
+      role: Role.ADMIN
     }
   });
 
@@ -65,7 +77,7 @@ const seed = async () => {
 
 seed()
   .then(() => {
-    console.log(`Seeded demo analyst ${demoEmail} and starter tickets.`);
+    console.log(`Seeded analyst ${demoEmail}, admin ${adminEmail}, and starter tickets.`);
   })
   .catch((error) => {
     console.error(error);

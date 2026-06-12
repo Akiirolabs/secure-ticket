@@ -11,7 +11,10 @@ operations lab.
 
 ## Implemented Features
 
-- Database-backed analyst login with Argon2 password hashing and a JWT session
+- Database-backed login and self-registration with Argon2 password hashing
+- JWT sessions with current-user validation
+- User, analyst, and administrator roles
+- Password changes and administrator role management
 - Protected ticket API routes
 - Persistent SQLite storage through Prisma ORM
 - Ticket list, detail view, search, and status filtering
@@ -27,12 +30,10 @@ operations lab.
 The application is a functional basic local ticketing system, not a
 production-ready service.
 
-- Setup seeds one demo analyst account; self-registration and user
-  administration are not implemented.
-- Role middleware exists, but ticket routes do not currently enforce
-  role-specific permissions.
-- Ticket comments, attachments, notifications, user administration, service
-  catalog, reporting, and durable audit history are not implemented.
+- Email verification, password reset email, and account deletion are not
+  implemented.
+- Ticket comments, attachments, notifications, service catalog, reporting, and
+  durable audit history are not implemented.
 - The frontend does not currently have an automated test suite.
 
 ## Prerequisites
@@ -60,7 +61,7 @@ The example API configuration includes a development JWT secret and SQLite
 `DATABASE_URL`. Replace secrets before using the application outside local
 development.
 
-Create the database, apply migrations, and seed the demo account:
+Create the database, apply migrations, and seed the demo accounts:
 
 ```bash
 npm --prefix secure-ticket-api run db:setup
@@ -78,13 +79,26 @@ npm run dev
 
 ## Demo Login
 
+Analyst:
+
 ```text
 Email: analyst@aegiscore.example
 Password: demo-password
 ```
 
-The login form is prefilled with these credentials in local development.
-The password is stored as an Argon2 hash in SQLite, not as plaintext.
+Administrator:
+
+```text
+Email: admin@aegiscore.example
+Password: admin-password
+```
+
+The analyst login is prefilled in local development. Seeded and registered
+passwords are stored as Argon2 hashes in SQLite, not as plaintext.
+
+New registrations receive the `USER` role. Users can create and view tickets.
+Analysts and administrators can also update ticket status and assignment or
+delete tickets. Administrators can assign roles from the account panel.
 
 ## Verification
 

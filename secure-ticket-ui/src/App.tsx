@@ -4,7 +4,9 @@ import type {
   CreateTicketInput,
   Ticket,
   TicketSeverity,
-  TicketStatus
+  TicketStatus,
+  User,
+  UserRole
 } from "./types";
 
 type ApiState = "checking" | "online" | "offline";
@@ -44,6 +46,9 @@ export const App = () => {
   const [token, setToken] = useState(() => sessionStorage.getItem(TOKEN_KEY) ?? "");
   const [email, setEmail] = useState(DEMO_EMAIL);
   const [password, setPassword] = useState(DEMO_PASSWORD);
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [activeTicketId, setActiveTicketId] = useState("");
   const [query, setQuery] = useState("");
@@ -61,6 +66,15 @@ export const App = () => {
   const [editAssignee, setEditAssignee] = useState("");
   const [isUpdating, setIsUpdating] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isAccountOpen, setIsAccountOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [accountError, setAccountError] = useState("");
+  const [accountNotice, setAccountNotice] = useState("");
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [users, setUsers] = useState<User[]>([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+  const [updatingUserId, setUpdatingUserId] = useState("");
 
   const loadTickets = async (authToken: string) => {
     setIsLoading(true);
@@ -84,12 +98,22 @@ export const App = () => {
     });
   };
 
+  const loadCurrentUser = async (authToken: string) => {
+    const result = await api.me(authToken);
+    if (!result.ok) {
+      clearInvalidSession(result.status);
+      return;
+    }
+    setCurrentUser(result.data.user);
+  };
+
   useEffect(() => {
     void api.health().then((result) => setApiState(result.ok ? "online" : "offline"));
   }, []);
 
   useEffect(() => {
     if (token) {
+      void loadCurrentUser(token);
       void loadTickets(token);
     }
   }, [token]);
@@ -148,6 +172,8 @@ export const App = () => {
     }),
     [tickets]
   );
+  const canManageTickets =
+    currentUser?.role === "ANALYST" || currentUser?.role === "ADMIN";
 
   const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -163,6 +189,36 @@ export const App = () => {
 
     sessionStorage.setItem(TOKEN_KEY, result.data.token);
     setToken(result.data.token);
+    setPassword("");
+  };
+
+  const handleRegister = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setLoginError("");
+
+    if (password.length < 8) {
+      setLoginError("Password must be at least 8 characters.");
+      return;
+    }
+    if (password !== confirmPassword) {
+      setLoginError("Passwords do not match.");
+      return;
+    }
+
+    setIsLoginBusy(true);
+    const result = await api.register(email.trim(), password);
+    setIsLoginBusy(false);
+
+    if (!result.ok) {
+      setLoginError(result.message);
+      return;
+    }
+
+    sessionStorage.setItem(TOKEN_KEY, result.data.token);
+    setCurrentUser(result.data.user);
+    setToken(result.data.token);
+    setPassword("");
+    setConfirmPassword("");
   };
 
   const handleLogout = () => {
@@ -172,6 +228,91 @@ export const App = () => {
     setActiveTicketId("");
     setPageError("");
     setNotice("");
+    setCurrentUser(null);
+    setUsers([]);
+  };
+
+  const clearInvalidSession = (status?: number) => {
+    if (status !== 401) {
+      return false;
+    }
+
+    sessionStorage.removeItem(TOKEN_KEY);
+    setToken("");
+    setTickets([]);
+    setActiveTicketId("");
+    setCurrentUser(null);
+    setIsAccountOpen(false);
+    return true;
+  };
+
+  const openAccount = async () => {
+    setIsAccountOpen(true);
+    setAccountError("");
+    setAccountNotice("");
+
+    if (currentUser?.role !== "ADMIN") {
+      return;
+    }
+
+    setIsLoadingUsers(true);
+    const result = await api.users(token);
+    setIsLoadingUsers(false);
+
+    if (!result.ok) {
+      if (!clearInvalidSession(result.status)) {
+        setAccountError(result.message);
+      }
+      return;
+    }
+
+    setUsers(result.data.users);
+  };
+
+  const handleChangePassword = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setAccountError("");
+    setAccountNotice("");
+
+    if (newPassword.length < 8) {
+      setAccountError("New password must be at least 8 characters.");
+      return;
+    }
+
+    setIsChangingPassword(true);
+    const result = await api.changePassword(token, currentPassword, newPassword);
+    setIsChangingPassword(false);
+
+    if (!result.ok) {
+      if (!clearInvalidSession(result.status)) {
+        setAccountError(result.message);
+      }
+      return;
+    }
+
+    setCurrentPassword("");
+    setNewPassword("");
+    setAccountNotice(result.data.message);
+  };
+
+  const handleRoleChange = async (userId: string, role: UserRole) => {
+    setAccountError("");
+    setAccountNotice("");
+    setUpdatingUserId(userId);
+    const result = await api.updateUserRole(token, userId, role);
+    setUpdatingUserId("");
+
+    if (!result.ok) {
+      if (!clearInvalidSession(result.status)) {
+        setAccountError(result.message);
+      }
+      return;
+    }
+
+    setUsers((current) =>
+      current.map((user) => (user.id === result.data.user.id ? result.data.user : user))
+    );
+    setAccountNotice(`${result.data.user.email} is now ${role}.`);
   };
 
   const handleCreateTicket = async (event: FormEvent<HTMLFormElement>) => {
@@ -195,6 +336,9 @@ export const App = () => {
     setIsCreating(false);
 
     if (!result.ok) {
+      if (clearInvalidSession(result.status)) {
+        return;
+      }
       setCreateError(result.message);
       return;
     }
@@ -227,6 +371,9 @@ export const App = () => {
     setIsUpdating(false);
 
     if (!result.ok) {
+      if (clearInvalidSession(result.status)) {
+        return;
+      }
       setPageError(result.message);
       return;
     }
@@ -258,6 +405,9 @@ export const App = () => {
     setIsDeleting(false);
 
     if (!result.ok) {
+      if (clearInvalidSession(result.status)) {
+        return;
+      }
       setPageError(result.message);
       return;
     }
@@ -300,12 +450,14 @@ export const App = () => {
         </section>
 
         <section className="loginCard">
-          <p className="eyebrow">Analyst access</p>
-          <h2>Sign in to the console</h2>
+          <p className="eyebrow">{authMode === "login" ? "Secure access" : "New account"}</p>
+          <h2>{authMode === "login" ? "Sign in to the console" : "Create your account"}</h2>
           <p className="muted">
-            Demo credentials are prefilled for the local development environment.
+            {authMode === "login"
+              ? "Demo analyst credentials are prefilled for local development."
+              : "New accounts start with the user role and can submit tickets."}
           </p>
-          <form onSubmit={handleLogin}>
+          <form onSubmit={authMode === "login" ? handleLogin : handleRegister}>
             <label>
               Work email
               <input
@@ -326,9 +478,41 @@ export const App = () => {
                 required
               />
             </label>
+            {authMode === "register" && (
+              <label>
+                Confirm password
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  autoComplete="new-password"
+                  minLength={8}
+                  required
+                />
+              </label>
+            )}
             {loginError && <div className="inlineMessage error">{loginError}</div>}
             <button className="primaryButton loginButton" disabled={isLoginBusy}>
-              {isLoginBusy ? "Signing in..." : "Sign in"}
+              {isLoginBusy
+                ? authMode === "login"
+                  ? "Signing in..."
+                  : "Creating account..."
+                : authMode === "login"
+                  ? "Sign in"
+                  : "Create account"}
+            </button>
+            <button
+              type="button"
+              className="textButton authSwitch"
+              onClick={() => {
+                setAuthMode((current) => (current === "login" ? "register" : "login"));
+                setLoginError("");
+                setConfirmPassword("");
+              }}
+            >
+              {authMode === "login"
+                ? "Need an account? Register"
+                : "Already have an account? Sign in"}
             </button>
           </form>
         </section>
@@ -342,7 +526,7 @@ export const App = () => {
         <div className="brandBlock">
           <LogoMark />
           <div>
-            <div className="brand">AegisCore</div>
+            <div className="brand">Secure Tickets</div>
             <div className="brandSub">Service Operations</div>
           </div>
         </div>
@@ -355,6 +539,10 @@ export const App = () => {
           <button className="navItem" disabled title="Planned module">
             <Icon symbol="S" />
             <span>Service catalog</span>
+          </button>
+          <button className="navItem" onClick={() => void openAccount()}>
+            <Icon symbol="U" />
+            <span>{currentUser?.role === "ADMIN" ? "User administration" : "My account"}</span>
           </button>
           <button className="navItem" disabled title="Planned module">
             <Icon symbol="R" />
@@ -369,10 +557,10 @@ export const App = () => {
         </div>
 
         <section className="sessionPanel">
-          <div className="avatar">NA</div>
+          <div className="avatar">{currentUser?.email.slice(0, 2).toUpperCase() ?? "U"}</div>
           <div className="sessionText">
-            <span>NOC Analyst</span>
-            <small>{DEMO_EMAIL}</small>
+            <span>{currentUser?.role ?? "Loading"}</span>
+            <small>{currentUser?.email ?? "Loading account..."}</small>
           </div>
           <button className="textButton" onClick={handleLogout}>
             Sign out
@@ -384,7 +572,7 @@ export const App = () => {
         <header className="topbar">
           <div>
             <p className="eyebrow">Enterprise incident management</p>
-            <h1>Ticket Operations</h1>
+            <h1>Panel</h1>
             <p className="headerSummary">
               Monitor active work, maintain ownership, and resolve service impact.
             </p>
@@ -532,6 +720,12 @@ export const App = () => {
                   </div>
                 </dl>
 
+                {!canManageTickets ? (
+                  <section className="readOnlyNotice">
+                    <strong>Submitted for triage</strong>
+                    <p>An analyst or administrator can update ownership and status.</p>
+                  </section>
+                ) : (
                 <form className="updateForm" onSubmit={handleUpdateTicket}>
                   <div className="formSectionHeader">
                     <div>
@@ -576,6 +770,7 @@ export const App = () => {
                     {isDeleting ? "Deleting ticket..." : "Delete ticket"}
                   </button>
                 </form>
+                )}
 
                 <section className="auditPanel">
                   <h3>Audit context</h3>
@@ -701,6 +896,104 @@ export const App = () => {
                 </button>
               </footer>
             </form>
+          </section>
+        </div>
+      )}
+
+      {isAccountOpen && currentUser && (
+        <div className="modalOverlay" role="presentation">
+          <section
+            className="modal accountModal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="account-title"
+          >
+            <header className="modalHeader">
+              <div>
+                <p className="eyebrow">Account security</p>
+                <h2 id="account-title">Account settings</h2>
+                <p>{currentUser.email} · {currentUser.role}</p>
+              </div>
+              <button
+                className="modalClose"
+                onClick={() => setIsAccountOpen(false)}
+                aria-label="Close account settings"
+              >
+                ×
+              </button>
+            </header>
+            <div className="modalBody accountBody">
+              {(accountError || accountNotice) && (
+                <div className={`inlineMessage ${accountError ? "error" : "success"}`}>
+                  {accountError || accountNotice}
+                </div>
+              )}
+              <form className="accountForm" onSubmit={handleChangePassword}>
+                <div>
+                  <h3>Change password</h3>
+                  <p className="muted">Use at least eight characters.</p>
+                </div>
+                <label>
+                  Current password
+                  <input
+                    type="password"
+                    value={currentPassword}
+                    onChange={(event) => setCurrentPassword(event.target.value)}
+                    autoComplete="current-password"
+                    required
+                  />
+                </label>
+                <label>
+                  New password
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(event) => setNewPassword(event.target.value)}
+                    autoComplete="new-password"
+                    minLength={8}
+                    required
+                  />
+                </label>
+                <button className="primaryButton" disabled={isChangingPassword}>
+                  {isChangingPassword ? "Updating..." : "Update password"}
+                </button>
+              </form>
+
+              {currentUser.role === "ADMIN" && (
+                <section className="userAdmin">
+                  <div>
+                    <h3>User administration</h3>
+                    <p className="muted">Assign access levels to registered users.</p>
+                  </div>
+                  {isLoadingUsers ? (
+                    <p className="muted">Loading users...</p>
+                  ) : (
+                    <div className="userList">
+                      {users.map((user) => (
+                        <div className="userRow" key={user.id}>
+                          <div>
+                            <strong>{user.email}</strong>
+                            <small>Joined {formatUpdatedAt(user.createdAt)}</small>
+                          </div>
+                          <select
+                            value={user.role}
+                            disabled={user.id === currentUser.id || updatingUserId === user.id}
+                            onChange={(event) =>
+                              void handleRoleChange(user.id, event.target.value as UserRole)
+                            }
+                            aria-label={`Role for ${user.email}`}
+                          >
+                            <option value="USER">User</option>
+                            <option value="ANALYST">Analyst</option>
+                            <option value="ADMIN">Admin</option>
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              )}
+            </div>
           </section>
         </div>
       )}

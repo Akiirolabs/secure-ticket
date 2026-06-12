@@ -1,7 +1,9 @@
 import type {
   CreateTicketInput,
   Ticket,
-  UpdateTicketInput
+  UpdateTicketInput,
+  User,
+  UserRole
 } from "./types";
 
 const API_BASE_URL =
@@ -58,6 +60,39 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ email, password })
     }),
+
+  register: (email: string, password: string) =>
+    request<{ success: boolean; token: string; user: User }>("/auth/register", {
+      method: "POST",
+      body: JSON.stringify({ email, password })
+    }),
+
+  me: (token: string) =>
+    request<{ success: boolean; user: User }>("/auth/me", {
+      headers: authorized(token)
+    }),
+
+  changePassword: (token: string, currentPassword: string, newPassword: string) =>
+    request<{ success: boolean; message: string }>("/auth/password", {
+      method: "PATCH",
+      headers: authorized(token),
+      body: JSON.stringify({ currentPassword, newPassword })
+    }),
+
+  users: (token: string) =>
+    request<{ success: boolean; users: User[] }>("/admin/users", {
+      headers: authorized(token)
+    }),
+
+  updateUserRole: (token: string, userId: string, role: UserRole) =>
+    request<{ success: boolean; user: User }>(
+      `/admin/users/${encodeURIComponent(userId)}/role`,
+      {
+        method: "PATCH",
+        headers: authorized(token),
+        body: JSON.stringify({ role })
+      }
+    ),
 
   tickets: (token: string) =>
     request<{ success: boolean; tickets: Ticket[] }>("/tickets", {

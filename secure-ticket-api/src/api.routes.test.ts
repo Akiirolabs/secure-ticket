@@ -19,6 +19,7 @@ const baseTicket = {
 
 describe("API routes", () => {
   let analyst: User;
+  let admin: User;
 
   beforeAll(async () => {
     const passwordHash = await argon2.hash(demoCredentials.password);
@@ -29,6 +30,15 @@ describe("API routes", () => {
         email: demoCredentials.email,
         passwordHash,
         role: Role.ANALYST
+      }
+    });
+    admin = await prisma.user.upsert({
+      where: { email: "admin@example.com" },
+      update: { passwordHash, role: Role.ADMIN },
+      create: {
+        email: "admin@example.com",
+        passwordHash,
+        role: Role.ADMIN
       }
     });
   });
@@ -82,6 +92,111 @@ describe("API routes", () => {
 
     expect(response.status).toBe(401);
     expect(response.body.message).toBe("Invalid email or password");
+  });
+
+  it("should register a new user with the user role", async () => {
+    const email = "new-user@example.com";
+    await prisma.user.deleteMany({ where: { email } });
+
+    const response = await request(app)
+      .post("/auth/register")
+      .send({ email, password: "new-password" });
+
+    expect(response.status).toBe(201);
+    expect(response.body.user).toMatchObject({ email, role: "USER" });
+    expect(typeof response.body.token).toBe("string");
+
+    const stored = await prisma.user.findUnique({ where: { email } });
+    expect(stored).not.toBeNull();
+    expect(stored?.passwordHash).not.toBe("new-password");
+  });
+
+  it("should reject duplicate registration", async () => {
+    const response = await request(app)
+      .post("/auth/register")
+      .send(demoCredentials);
+
+    expect(response.status).toBe(409);
+    expect(response.body.message).toContain("already exists");
+  });
+
+  it("should return the current database user", async () => {
+    const response = await request(app)
+      .get("/auth/me")
+      .set("Authorization", `Bearer ${authToken()}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.user).toMatchObject({
+      id: analyst.id,
+      email: analyst.email,
+      role: "ANALYST"
+    });
+  });
+
+  it("should change a user's password", async () => {
+    const email = "password-user@example.com";
+    const originalPassword = "original-password";
+    const user = await prisma.user.upsert({
+      where: { email },
+      update: { passwordHash: await argon2.hash(originalPassword), role: Role.USER },
+      create: {
+        email,
+        passwordHash: await argon2.hash(originalPassword),
+        role: Role.USER
+      }
+    });
+
+    const response = await request(app)
+      .patch("/auth/password")
+      .set("Authorization", `Bearer ${createAuthToken(user)}`)
+      .send({
+        currentPassword: originalPassword,
+        newPassword: "replacement-password"
+      });
+
+    expect(response.status).toBe(200);
+
+    const login = await request(app)
+      .post("/auth/login")
+      .send({ email, password: "replacement-password" });
+    expect(login.status).toBe(200);
+  });
+
+  it("should allow admins to list users and change another user's role", async () => {
+    const email = "role-user@example.com";
+    const user = await prisma.user.upsert({
+      where: { email },
+      update: { role: Role.USER },
+      create: {
+        email,
+        passwordHash: await argon2.hash("role-password"),
+        role: Role.USER
+      }
+    });
+    const adminToken = createAuthToken(admin);
+
+    const listResponse = await request(app)
+      .get("/admin/users")
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(listResponse.status).toBe(200);
+    expect(listResponse.body.users).toEqual(
+      expect.arrayContaining([expect.objectContaining({ email })])
+    );
+
+    const updateResponse = await request(app)
+      .patch(`/admin/users/${user.id}/role`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ role: "ANALYST" });
+    expect(updateResponse.status).toBe(200);
+    expect(updateResponse.body.user.role).toBe("ANALYST");
+  });
+
+  it("should block non-admin users from user administration", async () => {
+    const response = await request(app)
+      .get("/admin/users")
+      .set("Authorization", `Bearer ${authToken()}`);
+
+    expect(response.status).toBe(403);
   });
 
   it("should require authorization for tickets", async () => {
@@ -149,6 +264,25 @@ describe("API routes", () => {
       status: TicketStatus.IN_PROGRESS,
       assignedTo: "Platform Operations"
     });
+  });
+
+  it("should block regular users from changing ticket workflow", async () => {
+    const user = await prisma.user.upsert({
+      where: { email: "ticket-user@example.com" },
+      update: { role: Role.USER },
+      create: {
+        email: "ticket-user@example.com",
+        passwordHash: await argon2.hash("ticket-password"),
+        role: Role.USER
+      }
+    });
+
+    const response = await request(app)
+      .patch(`/tickets/${baseTicket.id}`)
+      .set("Authorization", `Bearer ${createAuthToken(user)}`)
+      .send({ status: "RESOLVED" });
+
+    expect(response.status).toBe(403);
   });
 
   it("should reject unsupported ticket status values", async () => {
