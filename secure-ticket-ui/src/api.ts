@@ -79,5 +79,14 @@ export const api = {
         headers: authorized(token),
         body: JSON.stringify(input)
       }
+    ),
+
+  deleteTicket: (token: string, ticketId: string) =>
+    request<{ success: boolean; ticket: Ticket }>(
+      `/tickets/${encodeURIComponent(ticketId)}`,
+      {
+        method: "DELETE",
+        headers: authorized(token)
+      }
     )
 };

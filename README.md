@@ -7,6 +7,10 @@ Secure Ticket is a full-stack corporate ticketing and incident operations lab.
 - `secure-ticket-api` - Node.js, TypeScript, Express, Prisma, JWT, logging, middleware, and tests.
 - `secure-ticket-ui` - React, TypeScript, Vite operations dashboard for ticket and audit workflows.
 
+## Documentation
+
+- [File data flow](docs/file-data-flow.md)
+
 ## Local Development
 
 Backend:

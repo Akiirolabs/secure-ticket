@@ -60,6 +60,7 @@ export const App = () => {
   const [editStatus, setEditStatus] = useState<TicketStatus>("OPEN");
   const [editAssignee, setEditAssignee] = useState("");
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const loadTickets = async (authToken: string) => {
     setIsLoading(true);
@@ -236,6 +237,37 @@ export const App = () => {
       )
     );
     setNotice(`${result.data.ticket.id} updated successfully.`);
+  };
+
+  const handleDeleteTicket = async () => {
+    if (!activeTicket) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete ${activeTicket.id}? This action cannot be undone.`
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setIsDeleting(true);
+    setPageError("");
+    setNotice("");
+    const result = await api.deleteTicket(token, activeTicket.id);
+    setIsDeleting(false);
+
+    if (!result.ok) {
+      setPageError(result.message);
+      return;
+    }
+
+    setTickets((current) => {
+      const remaining = current.filter((ticket) => ticket.id !== result.data.ticket.id);
+      setActiveTicketId(remaining[0]?.id ?? "");
+      return remaining;
+    });
+    setNotice(`${result.data.ticket.id} deleted successfully.`);
   };
 
   if (!token) {
@@ -529,8 +561,19 @@ export const App = () => {
                       placeholder="Unassigned"
                     />
                   </label>
-                  <button className="primaryButton" disabled={isUpdating}>
+                  <button
+                    className="primaryButton"
+                    disabled={isUpdating || isDeleting}
+                  >
                     {isUpdating ? "Saving changes..." : "Save changes"}
+                  </button>
+                  <button
+                    type="button"
+                    className="dangerButton"
+                    onClick={() => void handleDeleteTicket()}
+                    disabled={isUpdating || isDeleting}
+                  >
+                    {isDeleting ? "Deleting ticket..." : "Delete ticket"}
                   </button>
                 </form>
 

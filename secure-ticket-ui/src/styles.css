@@ -434,7 +434,8 @@ p {
 }
 
 .primaryButton,
-.ghostButton {
+.ghostButton,
+.dangerButton {
   min-height: 38px;
   display: inline-flex;
   align-items: center;
@@ -464,6 +465,17 @@ p {
 .ghostButton:hover:not(:disabled) {
   border-color: rgba(56, 189, 248, 0.4);
   background: rgba(14, 165, 233, 0.1);
+}
+
+.dangerButton {
+  border: 1px solid rgba(248, 113, 113, 0.45);
+  background: rgba(127, 29, 29, 0.22);
+  color: #fecaca;
+}
+
+.dangerButton:hover:not(:disabled) {
+  border-color: rgba(248, 113, 113, 0.8);
+  background: rgba(153, 27, 27, 0.38);
 }
 
 .inlineMessage {
@@ -808,7 +820,8 @@ dd {
   font-size: 11px;
 }
 
-.updateForm .primaryButton {
+.updateForm .primaryButton,
+.updateForm .dangerButton {
   width: 100%;
   margin-top: 2px;
 }

@@ -1,0 +1,164 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="1640" viewBox="0 0 1500 1640" role="img" aria-labelledby="title desc">
+  <title id="title">Secure Ticket file data flow</title>
+  <desc id="desc">Runtime data flow from the browser through the React frontend and Express backend, then back to the browser.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#334155"/>
+    </marker>
+    <style>
+      .background { fill: #f8fafc; }
+      .title { font: 700 32px Arial, sans-serif; fill: #0f172a; text-anchor: middle; }
+      .subtitle { font: 400 16px Arial, sans-serif; fill: #475569; text-anchor: middle; }
+      .group { fill: #ffffff; stroke: #cbd5e1; stroke-width: 2; rx: 18; ry: 18; }
+      .group-title { font: 700 15px Arial, sans-serif; fill: #475569; }
+      .node { stroke: #334155; stroke-width: 2; rx: 10; ry: 10; }
+      .browser { fill: #dbeafe; }
+      .frontend { fill: #e0f2fe; }
+      .network { fill: #fef3c7; }
+      .backend { fill: #dcfce7; }
+      .data { fill: #fce7f3; }
+      .error { fill: #fee2e2; }
+      .response { fill: #ede9fe; }
+      .support { fill: #f1f5f9; }
+      .label { font: 700 15px Arial, sans-serif; fill: #0f172a; text-anchor: middle; }
+      .detail { font: 400 12px Arial, sans-serif; fill: #334155; text-anchor: middle; }
+      .line { stroke: #334155; stroke-width: 2.2; fill: none; marker-end: url(#arrow); }
+      .support-line { stroke: #64748b; stroke-width: 1.8; stroke-dasharray: 7 6; fill: none; marker-end: url(#arrow); }
+      .error-line { stroke: #dc2626; stroke-width: 2; stroke-dasharray: 7 6; fill: none; marker-end: url(#arrow); }
+      .line-label { font: 600 12px Arial, sans-serif; fill: #475569; text-anchor: middle; }
+      .error-label { font: 600 12px Arial, sans-serif; fill: #b91c1c; text-anchor: middle; }
+      .note { font: 400 14px Arial, sans-serif; fill: #475569; }
+      .note-strong { font: 700 14px Arial, sans-serif; fill: #0f172a; }
+    </style>
+  </defs>
+
+  <rect class="background" width="1500" height="1640"/>
+  <text class="title" x="750" y="48">Secure Ticket File Data Flow</text>
+  <text class="subtitle" x="750" y="78">Runtime order from browser input to API processing and UI response</text>
+
+  <rect class="group" x="65" y="110" width="1370" height="115"/>
+  <text class="group-title" x="90" y="138">BROWSER</text>
+  <rect class="node browser" x="555" y="145" width="390" height="58"/>
+  <text class="label" x="750" y="169">1. Browser</text>
+  <text class="detail" x="750" y="190">User opens the application or performs an action</text>
+
+  <rect class="group" x="65" y="265" width="1370" height="410"/>
+  <text class="group-title" x="90" y="293">FRONTEND: secure-ticket-ui</text>
+
+  <rect class="node frontend" x="115" y="325" width="245" height="62"/>
+  <text class="label" x="237" y="350">2. index.html</text>
+  <text class="detail" x="237" y="373">Provides the root DOM element</text>
+
+  <rect class="node frontend" x="430" y="325" width="245" height="62"/>
+  <text class="label" x="552" y="350">3. src/main.tsx</text>
+  <text class="detail" x="552" y="373">Starts React</text>
+
+  <rect class="node frontend" x="745" y="325" width="245" height="62"/>
+  <text class="label" x="867" y="350">4. src/App.tsx</text>
+  <text class="detail" x="867" y="373">UI state and user actions</text>
+
+  <rect class="node frontend" x="1060" y="325" width="245" height="62"/>
+  <text class="label" x="1182" y="350">5. src/api.ts</text>
+  <text class="detail" x="1182" y="373">HTTP requests and responses</text>
+
+  <rect class="node support" x="280" y="475" width="245" height="62"/>
+  <text class="label" x="402" y="500">src/styles.css</text>
+  <text class="detail" x="402" y="523">Global application styling</text>
+
+  <rect class="node support" x="745" y="475" width="245" height="62"/>
+  <text class="label" x="867" y="500">src/types.ts</text>
+  <text class="detail" x="867" y="523">Shared frontend data types</text>
+
+  <rect class="node support" x="1060" y="575" width="245" height="62"/>
+  <text class="label" x="1182" y="600">VITE_API_BASE_URL</text>
+  <text class="detail" x="1182" y="623">Defaults to localhost:3000</text>
+
+  <path class="line" d="M360 356 H430"/>
+  <path class="line" d="M675 356 H745"/>
+  <path class="line" d="M990 356 H1060"/>
+  <path class="support-line" d="M552 387 V445 H402 V475"/>
+  <path class="support-line" d="M867 387 V475"/>
+  <path class="support-line" d="M1182 387 V575"/>
+
+  <path class="line" d="M750 203 V245 H237 V325"/>
+
+  <rect class="node network" x="555" y="720" width="390" height="68"/>
+  <text class="label" x="750" y="747">6. HTTP / JSON request</text>
+  <text class="detail" x="750" y="770">Health, login, list, create, update, or delete</text>
+  <path class="line" d="M1182 637 V685 H750 V720"/>
+
+  <rect class="group" x="65" y="835" width="1370" height="550"/>
+  <text class="group-title" x="90" y="863">BACKEND: secure-ticket-api</text>
+
+  <rect class="node backend" x="115" y="905" width="245" height="62"/>
+  <text class="label" x="237" y="930">7. src/server.ts</text>
+  <text class="detail" x="237" y="953">Starts the Express server</text>
+
+  <rect class="node support" x="115" y="1035" width="245" height="62"/>
+  <text class="label" x="237" y="1060">src/config.ts</text>
+  <text class="detail" x="237" y="1083">Environment configuration</text>
+
+  <rect class="node backend" x="430" y="905" width="245" height="62"/>
+  <text class="label" x="552" y="930">8. src/app.ts</text>
+  <text class="detail" x="552" y="953">Registers middleware and routes</text>
+
+  <rect class="node backend" x="745" y="905" width="245" height="62"/>
+  <text class="label" x="867" y="930">9. src/logger.ts</text>
+  <text class="detail" x="867" y="953">Request ID and activity logs</text>
+
+  <rect class="node backend" x="1060" y="905" width="245" height="62"/>
+  <text class="label" x="1182" y="930">10. rateLimit middleware</text>
+  <text class="detail" x="1182" y="953">Restricts request volume</text>
+
+  <rect class="node backend" x="1060" y="1035" width="245" height="62"/>
+  <text class="label" x="1182" y="1060">11. auth middleware</text>
+  <text class="detail" x="1182" y="1083">Verifies JWT for ticket routes</text>
+
+  <rect class="node backend" x="745" y="1165" width="245" height="62"/>
+  <text class="label" x="867" y="1190">12. src/app.ts routes</text>
+  <text class="detail" x="867" y="1213">Validates and handles request</text>
+
+  <rect class="node data" x="430" y="1165" width="245" height="62"/>
+  <text class="label" x="552" y="1190">13. src/data.ts</text>
+  <text class="detail" x="552" y="1213">In-memory users and tickets</text>
+
+  <rect class="node error" x="1060" y="1290" width="245" height="62"/>
+  <text class="label" x="1182" y="1315">14. error middleware</text>
+  <text class="detail" x="1182" y="1338">Formats safe JSON errors</text>
+
+  <rect class="node support" x="745" y="1290" width="245" height="62"/>
+  <text class="label" x="867" y="1315">utils/AppError.ts</text>
+  <text class="detail" x="867" y="1338">Expected HTTP failures</text>
+
+  <path class="line" d="M360 936 H430"/>
+  <path class="support-line" d="M237 1035 V995 H237 V967"/>
+  <path class="line" d="M675 936 H745"/>
+  <path class="line" d="M990 936 H1060"/>
+  <path class="line" d="M1182 967 V1035"/>
+  <path class="line" d="M1182 1097 V1135 H867 V1165"/>
+  <path class="line" d="M745 1196 H675"/>
+
+  <path class="error-line" d="M990 1196 H1025 V1321 H1060"/>
+  <text class="error-label" x="1030" y="1181">failure</text>
+  <path class="error-line" d="M1182 1097 V1290"/>
+  <path class="error-line" d="M990 1321 H1060"/>
+
+  <path class="line" d="M750 788 V815 H237 V905"/>
+
+  <rect class="node response" x="555" y="1430" width="390" height="68"/>
+  <text class="label" x="750" y="1457">15. HTTP / JSON response</text>
+  <text class="detail" x="750" y="1480">Data or error, status code, and request ID</text>
+
+  <path class="line" d="M552 1227 V1400 H750 V1430"/>
+  <path class="line" d="M1182 1352 V1400 H750 V1430"/>
+
+  <rect class="node frontend" x="555" y="1535" width="390" height="68"/>
+  <text class="label" x="750" y="1562">16. App.tsx updates the interface</text>
+  <text class="detail" x="750" y="1585">Renders ticket data, success notice, or error message</text>
+  <path class="line" d="M750 1498 V1535"/>
+
+  <text class="note-strong" x="80" y="1548">Current storage:</text>
+  <text class="note" x="80" y="1573">src/data.ts is active.</text>
+  <text class="note" x="80" y="1596">Prisma is defined but not</text>
+  <text class="note" x="80" y="1619">connected at runtime.</text>
+</svg>
