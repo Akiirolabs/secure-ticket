@@ -1,13 +1,44 @@
 import crypto from "crypto";
+import argon2 from "argon2";
 import cors from "cors";
 import express from "express";
 import helmet from "helmet";
+import { TicketSeverity, TicketStatus, type Prisma } from "@prisma/client";
+import { createAuthToken } from "./data";
+import { prisma } from "./db";
 import { logEvents } from "./logger";
 import { authMiddleware } from "./middleware/auth.middleware";
 import { errorMiddleware, notFoundHandler } from "./middleware/error.middleware";
 import { rateLimitMiddleware } from "./middleware/rateLimit.middleware";
 import { AppError } from "./utils/AppError";
-import { createAuthToken, tickets, validCredentials } from "./data";
+import { asyncHandler } from "./utils/asyncHandler";
+
+const ticketWithCreator = {
+  createdBy: {
+    select: {
+      email: true
+    }
+  }
+} satisfies Prisma.TicketInclude;
+
+type TicketRecord = Prisma.TicketGetPayload<{
+  include: typeof ticketWithCreator;
+}>;
+
+const serializeTicket = (ticket: TicketRecord) => ({
+  id: ticket.id,
+  title: ticket.title,
+  description: ticket.description,
+  system: ticket.system,
+  severity: ticket.severity,
+  status: ticket.status,
+  createdBy: ticket.createdBy.email,
+  assignedTo: ticket.assignedTo,
+  updatedAt: ticket.updatedAt.toISOString()
+});
+
+const getTicketId = (value: string | string[]) =>
+  Array.isArray(value) ? value[0] : value;
 
 export const createApp = () => {
   const app = express();
@@ -43,134 +74,181 @@ export const createApp = () => {
     res.json({ success: true, message: "OK" });
   });
 
-  app.post("/auth/login", (req, res, next) => {
-    logEvents.controllerStarted(req.requestId, "AUTH_LOGIN", undefined, {
-      email: req.body.email
-    });
-    const { email, password } = req.body;
+  app.post(
+    "/auth/login",
+    asyncHandler(async (req, res, next) => {
+      const email =
+        typeof req.body.email === "string" ? req.body.email.trim().toLowerCase() : "";
+      const password = typeof req.body.password === "string" ? req.body.password : "";
 
-    if (email === validCredentials.email && password === validCredentials.password) {
-      const token = createAuthToken();
-      logEvents.controllerSucceeded(req.requestId, "AUTH_LOGIN", 0, validCredentials.id);
-      logEvents.userLoginSuccess(req.requestId, validCredentials.id);
+      logEvents.controllerStarted(req.requestId, "AUTH_LOGIN", undefined, {
+        email
+      });
+
+      const user = email
+        ? await prisma.user.findUnique({
+            where: { email }
+          })
+        : null;
+      const passwordMatches =
+        user && password ? await argon2.verify(user.passwordHash, password) : false;
+
+      if (!user || !passwordMatches) {
+        logEvents.userLoginFailed(req.requestId, email);
+        return next(new AppError("Invalid email or password", 401));
+      }
+
+      const token = createAuthToken(user);
+      logEvents.controllerSucceeded(req.requestId, "AUTH_LOGIN", 0, user.id);
+      logEvents.userLoginSuccess(req.requestId, user.id);
       return res.json({ success: true, token });
-    }
+    })
+  );
 
-    logEvents.userLoginFailed(req.requestId, email);
-    return next(new AppError("Invalid email or password", 401));
-  });
+  app.get(
+    "/tickets",
+    authMiddleware,
+    asyncHandler(async (req, res) => {
+      logEvents.controllerStarted(req.requestId, "GET_TICKETS", req.user?.id);
+      const tickets = await prisma.ticket.findMany({
+        include: ticketWithCreator,
+        orderBy: { updatedAt: "desc" }
+      });
 
-  app.get("/tickets", authMiddleware, (_req, res) => {
-    logEvents.controllerStarted(_req.requestId, "GET_TICKETS", _req.user?.id);
-    res.json({ success: true, tickets });
-    logEvents.controllerSucceeded(_req.requestId, "GET_TICKETS", 0, _req.user?.id);
-  });
+      res.json({ success: true, tickets: tickets.map(serializeTicket) });
+      logEvents.controllerSucceeded(req.requestId, "GET_TICKETS", 0, req.user?.id);
+    })
+  );
 
-  app.post("/tickets", authMiddleware, (req, res, next) => {
-    logEvents.controllerStarted(req.requestId, "CREATE_TICKET", req.user?.id, {
-      title: req.body.title
-    });
+  app.post(
+    "/tickets",
+    authMiddleware,
+    asyncHandler(async (req, res, next) => {
+      logEvents.controllerStarted(req.requestId, "CREATE_TICKET", req.user?.id, {
+        title: req.body.title
+      });
 
-    const { title, description, system, severity } = req.body;
+      const title = typeof req.body.title === "string" ? req.body.title.trim() : "";
+      const description =
+        typeof req.body.description === "string" ? req.body.description.trim() : "";
+      const system = typeof req.body.system === "string" ? req.body.system.trim() : "";
+      const severity = req.body.severity;
 
-    if (!title || !description || !system || !severity) {
-      logEvents.controllerFailed(req.requestId, "CREATE_TICKET", 0, new Error("Missing required fields"), req.user?.id);
-      return next(new AppError("Missing required fields: title, description, system, severity", 400));
-    }
+      if (!title || !description || !system || !severity) {
+        return next(
+          new AppError(
+            "Missing required fields: title, description, system, severity",
+            400
+          )
+        );
+      }
 
-    const validSeverities = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
-    if (!validSeverities.includes(severity)) {
-      return next(new AppError(`Invalid severity. Must be one of: ${validSeverities.join(", ")}`, 400));
-    }
+      if (!Object.values(TicketSeverity).includes(severity)) {
+        return next(
+          new AppError(
+            `Invalid severity. Must be one of: ${Object.values(TicketSeverity).join(", ")}`,
+            400
+          )
+        );
+      }
 
-    const ticketId = `INC-${Date.now().toString().slice(-5)}`;
-    const newTicket = {
-      id: ticketId,
-      title,
-      description,
-      system,
-      severity: severity as "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
-      status: "OPEN" as const,
-      createdBy: req.user?.email || "System",
-      assignedTo: "Unassigned",
-      updatedAt: new Date().toISOString()
-    };
+      const ticket = await prisma.ticket.create({
+        data: {
+          id: `INC-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
+          title,
+          description,
+          system,
+          severity,
+          createdById: req.user!.id
+        },
+        include: ticketWithCreator
+      });
 
-    tickets.push(newTicket);
-    logEvents.controllerSucceeded(req.requestId, "CREATE_TICKET", 0, req.user?.id);
-    logEvents.ticketCreated(req.requestId, req.user?.id || "", ticketId);
+      logEvents.controllerSucceeded(req.requestId, "CREATE_TICKET", 0, req.user?.id);
+      logEvents.ticketCreated(req.requestId, req.user!.id, ticket.id);
+      res.status(201).json({ success: true, ticket: serializeTicket(ticket) });
+    })
+  );
 
-    res.status(201).json({ success: true, ticket: newTicket });
-  });
+  app.patch(
+    "/tickets/:ticketId",
+    authMiddleware,
+    asyncHandler(async (req, res, next) => {
+      const ticketId = getTicketId(req.params.ticketId);
+      const status = req.body.status;
+      const assignedTo =
+        typeof req.body.assignedTo === "string" ? req.body.assignedTo.trim() : undefined;
 
-  app.patch("/tickets/:ticketId", authMiddleware, (req, res, next) => {
-    const ticketIdParam = req.params.ticketId;
-    const ticketId = Array.isArray(ticketIdParam) ? ticketIdParam[0] : ticketIdParam;
-    const ticket = tickets.find((item) => item.id === ticketId);
+      logEvents.controllerStarted(req.requestId, "UPDATE_TICKET", req.user?.id, {
+        ticketId
+      });
 
-    logEvents.controllerStarted(req.requestId, "UPDATE_TICKET", req.user?.id, {
-      ticketId
-    });
+      if (status !== undefined && !Object.values(TicketStatus).includes(status)) {
+        return next(
+          new AppError(
+            `Invalid status. Must be one of: ${Object.values(TicketStatus).join(", ")}`,
+            400
+          )
+        );
+      }
 
-    if (!ticket) {
-      return next(new AppError("Ticket not found", 404));
-    }
+      if (req.body.assignedTo !== undefined && !assignedTo) {
+        return next(new AppError("assignedTo must be a non-empty string", 400));
+      }
 
-    const { status, assignedTo } = req.body;
-    const validStatuses = ["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"];
+      if (status === undefined && assignedTo === undefined) {
+        return next(new AppError("Provide status or assignedTo to update the ticket", 400));
+      }
 
-    if (status !== undefined && !validStatuses.includes(status)) {
-      return next(new AppError(`Invalid status. Must be one of: ${validStatuses.join(", ")}`, 400));
-    }
+      const existing = await prisma.ticket.findUnique({ where: { id: ticketId } });
+      if (!existing) {
+        return next(new AppError("Ticket not found", 404));
+      }
 
-    if (assignedTo !== undefined && (typeof assignedTo !== "string" || !assignedTo.trim())) {
-      return next(new AppError("assignedTo must be a non-empty string", 400));
-    }
+      const ticket = await prisma.ticket.update({
+        where: { id: ticketId },
+        data: {
+          ...(status !== undefined ? { status } : {}),
+          ...(assignedTo !== undefined ? { assignedTo } : {})
+        },
+        include: ticketWithCreator
+      });
 
-    if (status === undefined && assignedTo === undefined) {
-      return next(new AppError("Provide status or assignedTo to update the ticket", 400));
-    }
+      logEvents.controllerSucceeded(req.requestId, "UPDATE_TICKET", 0, req.user?.id, {
+        ticketId
+      });
+      logEvents.ticketUpdated(req.requestId, req.user!.id, ticketId);
+      res.json({ success: true, ticket: serializeTicket(ticket) });
+    })
+  );
 
-    if (status !== undefined) {
-      ticket.status = status as "OPEN" | "IN_PROGRESS" | "RESOLVED" | "CLOSED";
-    }
+  app.delete(
+    "/tickets/:ticketId",
+    authMiddleware,
+    asyncHandler(async (req, res, next) => {
+      const ticketId = getTicketId(req.params.ticketId);
 
-    if (assignedTo !== undefined) {
-      ticket.assignedTo = assignedTo.trim();
-    }
+      logEvents.controllerStarted(req.requestId, "DELETE_TICKET", req.user?.id, {
+        ticketId
+      });
 
-    ticket.updatedAt = new Date().toISOString();
+      const existing = await prisma.ticket.findUnique({
+        where: { id: ticketId },
+        include: ticketWithCreator
+      });
+      if (!existing) {
+        return next(new AppError("Ticket not found", 404));
+      }
 
-    logEvents.controllerSucceeded(req.requestId, "UPDATE_TICKET", 0, req.user?.id, {
-      ticketId
-    });
-    logEvents.ticketUpdated(req.requestId, req.user?.id || "", ticketId);
+      await prisma.ticket.delete({ where: { id: ticketId } });
 
-    res.json({ success: true, ticket });
-  });
-
-  app.delete("/tickets/:ticketId", authMiddleware, (req, res, next) => {
-    const ticketIdParam = req.params.ticketId;
-    const ticketId = Array.isArray(ticketIdParam) ? ticketIdParam[0] : ticketIdParam;
-    const ticketIndex = tickets.findIndex((item) => item.id === ticketId);
-
-    logEvents.controllerStarted(req.requestId, "DELETE_TICKET", req.user?.id, {
-      ticketId
-    });
-
-    if (ticketIndex === -1) {
-      return next(new AppError("Ticket not found", 404));
-    }
-
-    const [deletedTicket] = tickets.splice(ticketIndex, 1);
-
-    logEvents.controllerSucceeded(req.requestId, "DELETE_TICKET", 0, req.user?.id, {
-      ticketId
-    });
-    logEvents.ticketDeleted(req.requestId, req.user?.id || "", ticketId);
-
-    res.json({ success: true, ticket: deletedTicket });
-  });
+      logEvents.controllerSucceeded(req.requestId, "DELETE_TICKET", 0, req.user?.id, {
+        ticketId
+      });
+      logEvents.ticketDeleted(req.requestId, req.user!.id, ticketId);
+      res.json({ success: true, ticket: serializeTicket(existing) });
+    })
+  );
 
   app.use(notFoundHandler);
   app.use(errorMiddleware);

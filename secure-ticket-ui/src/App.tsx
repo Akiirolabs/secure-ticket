@@ -365,7 +365,7 @@ export const App = () => {
         <div className="environmentCard">
           <span>Environment</span>
           <strong>Local development</strong>
-          <small>Tickets reset when the API restarts</small>
+          <small>Tickets persist in the local SQLite database</small>
         </div>
 
         <section className="sessionPanel">

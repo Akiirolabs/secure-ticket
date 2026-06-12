@@ -6,13 +6,16 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "test": "jest --runInBand",
+    "test": "DATABASE_URL=file:./test.db prisma db push --skip-generate && DATABASE_URL=file:./test.db jest --runInBand",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:setup": "prisma migrate deploy && npm run db:seed",
     "prisma:validate": "prisma validate",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
+    "argon2": "^0.44.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",

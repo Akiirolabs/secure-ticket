@@ -28,31 +28,29 @@ enum TicketStatus {
 }
 
 model User {
-  id              String   @id @default(cuid())
-  email           String   @unique
-  passwordHash    String
-  role            Role     @default(USER)
-  createdTickets  Ticket[] @relation("CreatedTickets")
-  assignedTickets Ticket[] @relation("AssignedTickets")
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             String   @id @default(cuid())
+  email          String   @unique
+  passwordHash   String
+  role           Role     @default(USER)
+  createdTickets Ticket[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 model Ticket {
-  id          String         @id @default(cuid())
+  id          String         @id
   title       String
   description String
+  system      String
   severity    TicketSeverity @default(MEDIUM)
   status      TicketStatus   @default(OPEN)
   createdById String
-  assignedToId String?
-  createdBy   User           @relation("CreatedTickets", fields: [createdById], references: [id])
-  assignedTo  User?          @relation("AssignedTickets", fields: [assignedToId], references: [id])
+  createdBy   User           @relation(fields: [createdById], references: [id])
+  assignedTo  String         @default("Unassigned")
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 
   @@index([createdById])
-  @@index([assignedToId])
   @@index([status])
   @@index([severity])
 }
