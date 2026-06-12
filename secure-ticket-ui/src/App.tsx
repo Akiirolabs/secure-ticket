@@ -427,7 +427,7 @@ export const App = () => {
           <div className="loginBrand">
             <LogoMark />
             <div>
-              <strong>AegisCore</strong>
+              <strong>Secure IO</strong>
               <span>Enterprise Service Operations</span>
             </div>
           </div>
@@ -526,7 +526,7 @@ export const App = () => {
         <div className="brandBlock">
           <LogoMark />
           <div>
-            <div className="brand">Secure Tickets</div>
+            <div className="brand">Secure IO</div>
             <div className="brandSub">Service Operations</div>
           </div>
         </div>
