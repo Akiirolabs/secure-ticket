@@ -23,7 +23,7 @@ export type Ticket = {
 
 export type CreateTicketInput = Pick<
   Ticket,
-  "title" | "description" | "system" | "severity"
+  "title" | "description" | "system" | "severity" | "type"
 >;
 
 export type UpdateTicketInput = Partial<Pick<Ticket, "status" | "assignedTo">>;

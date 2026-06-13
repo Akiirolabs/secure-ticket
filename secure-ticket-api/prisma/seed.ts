@@ -1,3 +1,4 @@
+import "dotenv/config";
 import argon2 from "argon2";
 import { PrismaClient, Role, TicketSeverity, TicketStatus } from "@prisma/client";
 

@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { api } from "./api";
 import type {
+  BugType,
   CreateTicketInput,
   Ticket,
   TicketSeverity,
   TicketStatus,
   User,
-  UserRole,
-  BugType
+  UserRole
 } from "./types";
 
 type ApiState = "checking" | "online" | "offline";
@@ -21,7 +21,7 @@ const emptyTicket: CreateTicketInput = {
   system: "",
   severity: "MEDIUM",
   description: "",
-  type: "SOFTWARE"
+  type: "HARDWARE"
 };
 
 const severityRank: Record<TicketSeverity, number> = {
@@ -850,6 +850,23 @@ export const App = () => {
                       }
                       placeholder="Example: Identity Service"
                     />
+                  </label>
+                  <label>
+                    Type
+                    <select
+                      value={newTicket.type}
+                      onChange={(event) =>
+                        setNewTicket((current) => ({
+                          ...current,
+                          type: event.target.value as BugType
+                        }))
+                      }
+                    >
+                      <option value="SOFTWARE">Software</option>
+                      <option value="HARDWARE">Hardware</option>
+                      <option value="NETWORK">Network</option>
+                      <option value="OTHER">Other</option>
+                    </select>
                   </label>
                   <label>
                     Severity
